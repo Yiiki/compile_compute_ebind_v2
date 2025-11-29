@@ -26,7 +26,7 @@ real*8,parameter :: one_third=1.d0/3.d0
 integer*4 :: new_unit,i,j,k,ierr,nnodest
 real*8,allocatable :: rho_out(:,:,:)
 real*8 :: V_corner,V_bulk,E_6,E6_1,E6_2,E6_3,Evbm,E_bind,E_bind2,E_d, E_7, Ecbm, E_e
-real*8,allocatable :: occ(:)
+real*8,allocatable :: occ(:,:)
 integer*4 :: num_band, ith_eigen, ith_bedge
 real*8,parameter :: E_AU=27.211386d0
 logical :: ist
@@ -36,6 +36,7 @@ logical :: iqst
 integer*4 :: n1_ref, n2_ref, n3_ref
 integer*4 :: n1_tmp, n2_tmp, n3_tmp
 character*256 :: dir_ref,fref,dir_tmp,ftmp,m33
+integer*4 :: ikpt_vbm, ikpt_cbm, ikpt_acc, ikpt_uoc
 
 call read_parameter("parameter.input",m33)
 
@@ -87,8 +88,8 @@ end if
 
 call read_occ(fref,occ)
 ! ith_bedge=1024
-E_e=occ(ith_bedge)
-E_d=occ(ith_bedge+nint(sign_e))
+E_e=occ(ith_bedge, ikpt_vbm)
+E_d=occ(ith_bedge+nint(sign_e), ikpt_cbm)
 
 write(ftmp,'(A,A)') trim(dir_tmp),"/OUT.OCC"
 
@@ -102,8 +103,8 @@ end if
 
 call read_occ(ftmp,occ)
 ! ith_eigen=1024
-E_6=occ(ith_eigen)
-E_7=occ(ith_eigen+nint(sign_e))
+E_6=occ(ith_eigen,ikpt_acc)
+E_7=occ(ith_eigen+nint(sign_e), ikpt_uoc)
 
 E_bind=sign_e*(E_6-V_corner+V_bulk-E_e) ! suggested by LWW
 
@@ -117,26 +118,40 @@ implicit none
 integer*4 :: nline,iE,iline,ios
 real*8 :: f
 character(len=*) :: file
-real*8,allocatable :: occ(:)
-print *, "we only address single K-point ! no spin !"
+real*8,allocatable :: occ(:,:)
+character*256 :: lines
+integer*4 :: ikpt, nkpt,neig,pos
+! print *, "we only address single K-point ! no spin !"
+print *, "we only address no spin ! multiple K-point allowed now"
 nline=0
+nkpt=0
   open(newunit=new_unit,file=trim(file))
   rewind(new_unit)
 loop_line : do
-  read(new_unit,*,iostat=ios) 
+  read(new_unit,*,iostat=ios) lines
+  pos=index(lines,"KPOINTS")
   if(ios.ne.0) exit loop_line
+  if(pos>0) nkpt=nkpt+1
   nline=nline+1
 end do loop_line
   close(new_unit)
 print *, "total line", nline
+print *, "num kpoint", nkpt 
+neig=nline/nkpt-2
+if(nkpt*(neig+2).ne.nline) then
+  write(6,*) "wrong line count, quit"
+  stop
+end if 
 if(allocated(occ)) deallocate(occ)
-allocate(occ(nline-2))
+allocate(occ(neig,nkpt))
   open(newunit=new_unit,file=trim(file))
   rewind(new_unit)
+do ikpt=1,nkpt
   read(new_unit,*,iostat=ios) 
   read(new_unit,*,iostat=ios) 
-do iline=1,nline-2
-  read(new_unit,*,iostat=ios) iE, occ(iline), f 
+do iline=1,neig
+  read(new_unit,*,iostat=ios) iE, occ(iline,ikpt), f 
+end do
 end do
   close(new_unit)
 end subroutine read_occ
@@ -150,16 +165,23 @@ open(newunit=new_unit,file=trim(file))
 rewind(new_unit)
 read(new_unit,'(a)') dir_ref
 read(new_unit,*) n1_ref, n2_ref, n3_ref
-read(new_unit,*) ith_bedge  ! what type of this ith bedge is
+read(new_unit,*) ith_bedge, ikpt_vbm, ikpt_cbm  ! what type of this ith bedge is
 read(new_unit,*) band_type  ! what type of this ith bedge is
 read(new_unit,'(a)') dir_tmp
 read(new_unit,*) n1_tmp, n2_tmp, n3_tmp
-read(new_unit,*) ith_eigen
+read(new_unit,*) ith_eigen, ikpt_acc, ikpt_uoc
 read(new_unit,'(A)') m33
 close(new_unit)
 write(6,*) "band_type = ", trim(band_type)
-write(6,*) "band_edge = ", ith_bedge
-write(6,*) "defect ei = ", ith_eigen
+if(trim(band_type)=="VBM") then
+write(6,*) "band_edge, ikpt(VBM), ikpt(CBM) = ", ith_bedge, ikpt_vbm, ikpt_cbm
+write(6,*) "defect ei, ikpt(acc), ikpt(CBM) = ", ith_eigen, ikpt_acc, ikpt_uoc
+end if
+if(trim(band_type)=="CBM") then
+write(6,*) "band_edge, ikpt(CBM), ikpt(VBM) = ", ith_bedge, ikpt_vbm, ikpt_cbm
+write(6,*) "defect ei, ikpt(dnr), ikpt(VBM) = ", ith_eigen, ikpt_acc, ikpt_uoc
+end if
+
 write(6,*) "mii       = ", m33
 end subroutine read_parameter
 
