@@ -41,6 +41,8 @@ integer*4 :: n1_tmp, n2_tmp, n3_tmp
 character*256 :: dir_ref,fref,dir_tmp,ftmp,m33
 integer*4 :: ikpt_vbm, ikpt_cbm, ikpt_acc, ikpt_uoc
 real*8 :: xs(3),xd(3)
+integer*4 :: ith_cv
+logical :: short_occ  ! missing Ec (for acceptor case) or Ev (for donor case) levels in occ
 call read_parameter("parameter.input",m33)
 
 select case (trim(band_type))
@@ -120,11 +122,22 @@ end if
 call read_occ(ftmp,occ)
 ! ith_eigen=1024
 E_6=occ(ith_eigen,ikpt_acc)
-E_7=occ(ith_eigen+nint(sign_e), ikpt_uoc)
+ith_cv=ith_eigen+nint(sign_e)
+if(ith_cv.lt.1.or.ith_cv.gt.size(occ(:,ikpt_uoc))) then
+  short_occ=.true.
+else
+  short_occ=.false.
+  E_7=occ(ith_cv, ikpt_uoc)
+end if
+
 
 E_bind=sign_e*(E_6-V_corner+V_bulk-E_e) ! suggested by LWW
 
+if(.not.short_occ) then
 E_bind2 = sign_e*(E_6 - (E_7 - (E_d - E_e) )) ! use the unocc orbit as reference
+else
+E_bind2 = -999.d0
+end if
 
 call write_output()
 
